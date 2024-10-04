@@ -50,8 +50,7 @@ INTERNALDOCS =                                  \
  internals/CONNECTION-FILTERS.md                \
  internals/DYNBUF.md                            \
  internals/HASH.md                              \
- internals/HYPER.md                             \
- internals/LLIST.md                             \
+  internals/LLIST.md                             \
  internals/MQTT.md                              \
  internals/NEW-PROTOCOL.md                      \
  internals/README.md                            \
