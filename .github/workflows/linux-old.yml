@@ -50,10 +50,21 @@ env:
   DEBIAN_FRONTEND: noninteractive
 
 jobs:
-  cmake:
-    name: linux (cmake & autoconf)
+  oldlinux:
+    name: oldlinux
     runs-on: 'ubuntu-latest'
     container: 'debian:stretch'
+
+    strategy:
+      fail-fast: false
+      matrix:
+        build:
+          - name: cmake
+            buildsystem: cmake
+            install_packages: cmake make gcc pkg-config libpsl-dev libzstd-dev zlib1g-dev libssl1.0-dev libssh-dev libssh2-1-dev libc-ares-dev heimdal-dev libldap2-dev librtmp-dev stunnel4 groff
+          - name: automake
+            buildsystem: automake
+            install_packages: make automake autoconf libtool gcc pkg-config libpsl-dev libzstd-dev zlib1g-dev libssl1.0-dev libssh-dev libssh2-1-dev libc-ares-dev heimdal-dev libldap2-dev librtmp-dev stunnel4 groff
 
     steps:
       - name: 'install prereqs'
@@ -67,7 +78,7 @@ jobs:
           dpkg -i freexian-archive-keyring_2022.06.08_all.deb
           echo 'deb http://deb.freexian.com/extended-lts stretch-lts main contrib non-free' | tee /etc/apt/sources.list.d/extended-lts.list
           apt-get update
-          apt-get install -y --no-install-suggests --no-install-recommends cmake make automake autoconf libtool gcc pkg-config libpsl-dev libzstd-dev zlib1g-dev libssl1.0-dev libssh-dev libssh2-1-dev libc-ares-dev heimdal-dev libldap2-dev librtmp-dev stunnel4 groff
+          apt-get install -y --no-install-suggests --no-install-recommends ${{ matrix.build.install_packages }}
           # GitHub's actions/checkout needs a newer glibc. This one is the
           # latest available for buster, the next stable release after stretch.
           httrack --get https://security.debian.org/debian-security/pool/updates/main/g/glibc/libc6_2.28-10+deb10u4_amd64.deb
@@ -75,7 +86,8 @@ jobs:
 
       - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938 # v4
 
-      - name: 'cmake build-only (out-of-tree, libssh2)'
+      - name: 'build-only (out-of-tree, libssh2)'
+        if: matrix.build.buildsystem == 'cmake'
         run: |
           mkdir bld-1
           cd bld-1
@@ -84,7 +96,8 @@ jobs:
           make install
           src/curl --disable --version
 
-      - name: 'cmake generate (out-of-tree, c-ares, libssh, zstd, gssapi)'
+      - name: 'generate (out-of-tree, c-ares, libssh, zstd, gssapi)'
+        if: matrix.build.buildsystem == 'cmake'
         run: |
           mkdir bld-cares
           cd bld-cares
@@ -92,24 +105,30 @@ jobs:
             -DENABLE_ARES=ON -DCURL_ZSTD=ON -DCURL_USE_GSSAPI=ON -DCURL_USE_LIBSSH2=OFF -DCURL_USE_LIBSSH=ON -DUSE_LIBRTMP=ON \
             -DCURL_LIBCURL_VERSIONED_SYMBOLS=ON
 
-      - name: 'cmake build'
+      - name: 'build'
+        if: matrix.build.buildsystem == 'cmake'
         run: |
           make -C bld-cares
           bld-cares/src/curl --disable --version
 
-      - name: 'cmake install'
+      - name: 'install'
+        if: matrix.build.buildsystem == 'cmake'
         run: make -C bld-cares install
 
-      - name: 'cmake build tests'
+      - name: 'build tests'
+        if: matrix.build.buildsystem == 'cmake'
         run: make -C bld-cares testdeps
 
-      - name: 'cmake run tests'
+      - name: 'run tests'
+        if: matrix.build.buildsystem == 'cmake'
         run: make -C bld-cares test-ci
 
       - name: 'autoreconf'
+        if: matrix.build.buildsystem == 'automake'
         run: autoreconf -if
 
       - name: 'configure (out-of-tree, libssh2)'
+        if: matrix.build.buildsystem == 'automake'
         run: |
           mkdir bld-am
           cd bld-am
@@ -117,13 +136,20 @@ jobs:
             --with-openssl --enable-ares --with-libssh --with-zstd --with-gssapi --with-librtmp \
             --prefix="$PWD"/../install-am
 
-      - name: 'autoconf build'
+      - name: 'build'
+        if: matrix.build.buildsystem == 'automake'
         run: |
           make -C bld-am
           bld-am/src/curl --disable --version
 
-      - name: 'autoconf install'
+      - name: 'install'
+        if: matrix.build.buildsystem == 'automake'
         run: make -C bld-am install
 
-      - name: 'autoconf build tests'
+      - name: 'build tests'
+        if: matrix.build.buildsystem == 'automake'
         run: make -C bld-am/tests all
+
+      - name: 'run tests'
+        if: matrix.build.buildsystem == 'automake'
+        run: make -C bld-am/tests test-ci
