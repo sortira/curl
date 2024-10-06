@@ -1507,3 +1507,65 @@ CURLcode Curl_conn_setup(struct Curl_easy *data,
 out:
   return result;
 }
+
+static CURLcode bindlocal(struct connectdata *conn, curl_socket_t sockfd, int af,
+                          const char *source)
+{
+    struct Curl_easy *data = conn->data;
+    struct sockaddr_storage sa;
+    struct sockaddr *sockaddr = (struct sockaddr *)&sa;
+    curl_socklen_t socklen = 0;
+    char myhost[256] = "";
+    int scope_id = 0;
+
+    memset(&sa, 0, sizeof(sa));
+
+    if (af == AF_INET) {
+        /* Handle IPv4 binding logic here */
+    }
+    else if (af == AF_INET6) {
+        struct sockaddr_in6 *sa6 = (struct sockaddr_in6 *)&sa;
+
+        sa6->sin6_family = AF_INET6;
+        sa6->sin6_port = 0; /* any port */
+
+        /* Resolve the IPv6 address */
+        if (source) {
+            strncpy(myhost, source, sizeof(myhost) - 1);
+            myhost[sizeof(myhost) - 1] = '\0';
+
+            /* Check if link-local and parse scope id if present */
+            char *percent = strchr(myhost, '%');
+            if (percent) {
+                *percent = '\0';
+                scope_id = if_nametoindex(percent + 1);
+                if (scope_id == 0) {
+                    failf(data, "Invalid interface name in IPv6 address");
+                    return CURLE_INTERFACE_FAILED;
+                }
+            }
+
+            if (Curl_inet_pton(AF_INET6, myhost, &sa6->sin6_addr) <= 0) {
+                failf(data, "Couldn't parse IPv6 address");
+                return CURLE_INTERFACE_FAILED;
+            }
+
+            /* Set scope_id for link-local addresses */
+            if (scope_id)
+                sa6->sin6_scope_id = scope_id;
+        }
+
+        socklen = sizeof(struct sockaddr_in6);
+    }
+
+    /* Common bind logic */
+    if (bind(sockfd, sockaddr, socklen) < 0) {
+        failf(data, "bind failed with errno %d: %s", SOCKERRNO, Curl_strerror(conn, SOCKERRNO));
+        return CURLE_INTERFACE_FAILED;
+    }
+
+    return CURLE_OK;
+}
+
+
+
